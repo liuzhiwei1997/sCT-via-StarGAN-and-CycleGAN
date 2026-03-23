@@ -1,0 +1,10 @@
+torch
+torchvision
+numpy
+Pillow
+pydicom
+opencv-python-headless
+scikit-image
+SimpleITK
+matplotlib
+pandas
