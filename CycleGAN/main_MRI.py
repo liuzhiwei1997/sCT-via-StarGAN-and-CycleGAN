@@ -1,8 +1,5 @@
 import os
 import argparse
-from solver_val import Solver
-from data_loader_aug import get_loader
-from torch.backends import cudnn
 
 
 def str2bool(v):
@@ -10,6 +7,10 @@ def str2bool(v):
 
 
 def main(config):
+    from solver_val import Solver
+    from data_loader_aug import get_loader
+    from torch.backends import cudnn
+
     # For fast training.
     cudnn.benchmark = True
 
@@ -85,17 +86,21 @@ if __name__ == '__main__':
     parser.add_argument('--use_tensorboard', type=str2bool, default=True)
 
     # Directories.
+    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    default_data_root = os.path.join(project_root, 'data', 'MRI_CycleGAN')
+    default_runs_root = os.path.join(project_root, 'runs', 'CycleMARI_lossfix')
+
     new_name = 'CycleMARI_lossfix'
     parser.add_argument('--itemA', type=str, default='MRI', choices=['MRI', 'CBCT'])
-    parser.add_argument('--train_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/Data/MRI_CycleGAN/train')
-    parser.add_argument('--val_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/Data/MRI_CycleGAN/validation')
-    parser.add_argument('--test_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/Data/MRI_CycleGAN/test')
-    parser.add_argument('--log_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/My_CycleGAN/{new_name}/logs')
-    parser.add_argument('--model_save_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/My_CycleGAN/{new_name}/models')
-    parser.add_argument('--sample_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/My_CycleGAN/{new_name}/samples')
-    parser.add_argument('--result_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/My_CycleGAN/{new_name}/results/test')
-    parser.add_argument('--val_result_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/My_CycleGAN/{new_name}/val')
-    parser.add_argument('--report_dir', type=str, default=f'/home/chanon/projects/Boo_Thesis/My_CycleGAN/{new_name}/report/test')
+    parser.add_argument('--train_dir', type=str, default=os.path.join(default_data_root, 'train'))
+    parser.add_argument('--val_dir', type=str, default=os.path.join(default_data_root, 'validation'))
+    parser.add_argument('--test_dir', type=str, default=os.path.join(default_data_root, 'test'))
+    parser.add_argument('--log_dir', type=str, default=os.path.join(default_runs_root, 'logs'))
+    parser.add_argument('--model_save_dir', type=str, default=os.path.join(default_runs_root, 'models'))
+    parser.add_argument('--sample_dir', type=str, default=os.path.join(default_runs_root, 'samples'))
+    parser.add_argument('--result_dir', type=str, default=os.path.join(default_runs_root, 'results', 'test'))
+    parser.add_argument('--val_result_dir', type=str, default=os.path.join(default_runs_root, 'val'))
+    parser.add_argument('--report_dir', type=str, default=os.path.join(default_runs_root, 'report', 'test'))
     
     # Step size.
     parser.add_argument('--log_step', type=int, default=20) #default=10
@@ -104,7 +109,7 @@ if __name__ == '__main__':
 
     config = parser.parse_args()  
     print(config)
-    config_txt_path = f"/home/chanon/projects/Boo_Thesis/My_CycleGAN/{new_name}/config"
+    config_txt_path = os.path.join(default_runs_root, 'config')
     if not os.path.exists(config_txt_path):
         os.makedirs(config_txt_path)
     config_file = os.path.join(config_txt_path, 'config.txt')

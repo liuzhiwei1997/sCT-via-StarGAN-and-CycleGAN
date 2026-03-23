@@ -1,8 +1,5 @@
 import os
 import argparse
-from solver_val import Solver
-from data_loader import get_loader, get_loader_class
-from torch.backends import cudnn
 
 
 def str2bool(v):
@@ -10,6 +7,10 @@ def str2bool(v):
 
 
 def main(config):
+    from solver_val import Solver
+    from data_loader import get_loader, get_loader_class
+    from torch.backends import cudnn
+
     # For fast training.
     cudnn.benchmark = True
 
