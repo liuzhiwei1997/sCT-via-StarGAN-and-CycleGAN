@@ -180,13 +180,17 @@ class Solver(object):
     
 
     def _preprocess_cbct_ct(self, dicom):
-        hu_data = dicom.pixel_array.astype(np.float32) * dicom.RescaleSlope + dicom.RescaleIntercept
+        slope = float(getattr(dicom, "RescaleSlope", 1.0))
+        intercept = float(getattr(dicom, "RescaleIntercept", 0.0))
+        hu_data = dicom.pixel_array.astype(np.float32) * slope + intercept
         clip_hu = np.clip(hu_data, -1000, 1000)
         nor_hu = (clip_hu + 1000.) / (1000. + 1000.)
         return nor_hu
 
     def _preprocess_mri(self, dicom):
-        pixel_array = dicom.pixel_array.astype(np.float32) * dicom.RescaleSlope + dicom.RescaleIntercept
+        slope = float(getattr(dicom, "RescaleSlope", 1.0))
+        intercept = float(getattr(dicom, "RescaleIntercept", 0.0))
+        pixel_array = dicom.pixel_array.astype(np.float32) * slope + intercept
         clip_in = np.clip(pixel_array, 0, 1500)
         nor_hu = clip_in / (1500)
         return nor_hu
