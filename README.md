@@ -114,3 +114,14 @@ python tools/prepare_paired_dicom.py \
   --output_case_dir ./data/MRI_CycleGAN/train/case001 \
   --dry_run
 ```
+
+Batch example (process all cases under `train/`):
+
+```bash
+python tools/prepare_paired_dicom.py \
+  --input_root ./data/MRI_CycleGAN/train \
+  --output_root ./data/MRI_CycleGAN/train_paired \
+  --key_mode auto
+```
+
+This scans all case folders (e.g., `case001`, `case002`) and processes each case that contains both `MRI/` and `CT/` subfolders.

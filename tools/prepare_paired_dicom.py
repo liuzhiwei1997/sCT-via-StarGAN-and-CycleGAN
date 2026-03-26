@@ -82,9 +82,19 @@ def copy_pairs(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare paired MRI/CT DICOM slices for CycleGAN")
-    parser.add_argument("--mri_dir", required=True, type=Path, help="Input MRI series directory")
-    parser.add_argument("--ct_dir", required=True, type=Path, help="Input CT series directory")
-    parser.add_argument("--output_case_dir", required=True, type=Path, help="Output case dir, e.g. data/.../train/case001")
+    parser.add_argument("--mri_dir", type=Path, help="Input MRI series directory")
+    parser.add_argument("--ct_dir", type=Path, help="Input CT series directory")
+    parser.add_argument("--output_case_dir", type=Path, help="Output case dir, e.g. data/.../train/case001")
+    parser.add_argument(
+        "--input_root",
+        type=Path,
+        help="Batch mode: root with case subfolders (e.g. train/case001, train/case002)",
+    )
+    parser.add_argument(
+        "--output_root",
+        type=Path,
+        help="Batch mode: output root where paired case folders are created",
+    )
     parser.add_argument("--mri_name", default="MRI", help="Output MRI folder name")
     parser.add_argument("--ct_name", default="CT", help="Output CT folder name")
     parser.add_argument(
@@ -98,31 +108,64 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if not args.mri_dir.is_dir() or not args.ct_dir.is_dir():
-        raise SystemExit("--mri_dir and --ct_dir must be existing directories")
+    single_mode = args.mri_dir is not None or args.ct_dir is not None or args.output_case_dir is not None
+    batch_mode = args.input_root is not None or args.output_root is not None
+    if single_mode and batch_mode:
+        raise SystemExit("Use either single-case args (--mri_dir/--ct_dir/--output_case_dir) or batch args (--input_root/--output_root), not both")
 
-    mri_infos = read_series(args.mri_dir, args.key_mode)
-    ct_infos = read_series(args.ct_dir, args.key_mode)
+    def process_one_case(mri_dir: Path, ct_dir: Path, output_case_dir: Path, case_name: str) -> None:
+        mri_infos = read_series(mri_dir, args.key_mode)
+        ct_infos = read_series(ct_dir, args.key_mode)
 
-    mri_map = build_map(mri_infos, args.round_digits)
-    ct_map = build_map(ct_infos, args.round_digits)
+        mri_map = build_map(mri_infos, args.round_digits)
+        ct_map = build_map(ct_infos, args.round_digits)
 
-    paired, only_mri, only_ct = copy_pairs(
-        mri_map,
-        ct_map,
-        args.output_case_dir,
-        args.mri_name,
-        args.ct_name,
-        dry_run=args.dry_run,
-    )
+        paired, only_mri, only_ct = copy_pairs(
+            mri_map,
+            ct_map,
+            output_case_dir,
+            args.mri_name,
+            args.ct_name,
+            dry_run=args.dry_run,
+        )
 
-    print(f"MRI readable slices: {len(mri_map)}")
-    print(f"CT readable slices:  {len(ct_map)}")
-    print(f"Paired slices:       {paired}")
-    print(f"MRI-only slices:     {only_mri}")
-    print(f"CT-only slices:      {only_ct}")
-    if not args.dry_run:
-        print(f"Output: {args.output_case_dir / args.mri_name} and {args.output_case_dir / args.ct_name}")
+        print(f"[{case_name}] MRI readable slices: {len(mri_map)}")
+        print(f"[{case_name}] CT readable slices:  {len(ct_map)}")
+        print(f"[{case_name}] Paired slices:       {paired}")
+        print(f"[{case_name}] MRI-only slices:     {only_mri}")
+        print(f"[{case_name}] CT-only slices:      {only_ct}")
+        if not args.dry_run:
+            print(f"[{case_name}] Output: {output_case_dir / args.mri_name} and {output_case_dir / args.ct_name}")
+
+    if batch_mode:
+        if args.input_root is None or args.output_root is None:
+            raise SystemExit("Batch mode requires both --input_root and --output_root")
+        if not args.input_root.is_dir():
+            raise SystemExit("--input_root must be an existing directory")
+
+        case_dirs = sorted([path for path in args.input_root.iterdir() if path.is_dir()])
+        if not case_dirs:
+            raise SystemExit("No case folders found under --input_root")
+
+        processed = 0
+        skipped = 0
+        for case_dir in case_dirs:
+            mri_dir = case_dir / args.mri_name
+            ct_dir = case_dir / args.ct_name
+            if not mri_dir.is_dir() or not ct_dir.is_dir():
+                skipped += 1
+                print(f"[{case_dir.name}] Skipped: missing '{args.mri_name}' or '{args.ct_name}' folder")
+                continue
+            process_one_case(mri_dir, ct_dir, args.output_root / case_dir.name, case_dir.name)
+            processed += 1
+
+        print(f"Batch summary: processed={processed}, skipped={skipped}")
+    else:
+        if args.mri_dir is None or args.ct_dir is None or args.output_case_dir is None:
+            raise SystemExit("Single-case mode requires --mri_dir, --ct_dir, and --output_case_dir")
+        if not args.mri_dir.is_dir() or not args.ct_dir.is_dir():
+            raise SystemExit("--mri_dir and --ct_dir must be existing directories")
+        process_one_case(args.mri_dir, args.ct_dir, args.output_case_dir, "single_case")
 
 
 if __name__ == "__main__":

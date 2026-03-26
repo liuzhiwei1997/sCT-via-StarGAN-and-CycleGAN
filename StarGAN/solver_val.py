@@ -194,7 +194,7 @@ class Solver(object):
     def read_dicom_series(self,dicom_directory):
         dicom_files = [os.path.join(dicom_directory, filename) for filename in os.listdir(dicom_directory) if filename.endswith('.dcm')]
         dicom_files.sort()
-        dicom_slices = [pydicom.read_file(file_path) for file_path in dicom_files]
+        dicom_slices = [pydicom.dcmread(file_path) for file_path in dicom_files]
         if 'CT' in dicom_directory:
             image_array = np.stack([self._preprocess_cbct_ct(slice) for slice in dicom_slices])
             return image_array
