@@ -171,13 +171,17 @@ class Solver(object):
     
 
     def _preprocess_cbct_ct(self, dicom):
-        hu_data = dicom.pixel_array.astype(np.float32) * dicom.RescaleSlope + dicom.RescaleIntercept
+        slope = float(getattr(dicom, "RescaleSlope", 1.0))
+        intercept = float(getattr(dicom, "RescaleIntercept", 0.0))
+        hu_data = dicom.pixel_array.astype(np.float32) * slope + intercept
         clip_hu = np.clip(hu_data, -1000, 1000)
         nor_hu = (clip_hu + 1000.) / (1000. + 1000.)
         return nor_hu
 
     def _preprocess_mri(self, dicom):
-        pixel_array = dicom.pixel_array.astype(np.float32) * dicom.RescaleSlope + dicom.RescaleIntercept
+        slope = float(getattr(dicom, "RescaleSlope", 1.0))
+        intercept = float(getattr(dicom, "RescaleIntercept", 0.0))
+        pixel_array = dicom.pixel_array.astype(np.float32) * slope + intercept
         clip_in = np.clip(pixel_array, 0, 1500)
         nor_hu = clip_in / (1500)
         return nor_hu
@@ -185,7 +189,7 @@ class Solver(object):
     def read_dicom_series(self,dicom_directory):
         dicom_files = [os.path.join(dicom_directory, filename) for filename in os.listdir(dicom_directory) if filename.endswith('.dcm')]
         dicom_files.sort()
-        dicom_slices = [pydicom.read_file(file_path) for file_path in dicom_files]
+        dicom_slices = [pydicom.dcmread(file_path) for file_path in dicom_files]
         if 'CT' in dicom_directory:
             image_array = np.stack([self._preprocess_cbct_ct(slice) for slice in dicom_slices])
             return image_array
