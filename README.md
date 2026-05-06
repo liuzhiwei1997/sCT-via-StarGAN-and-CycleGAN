@@ -2,7 +2,7 @@
 
 This repository contains the code used in the paper **"Synthetic CT Generation from CBCT and MRI Using StarGAN in the Pelvic Region"**. The work explores the application of StarGAN for generating synthetic CT (sCT) images from CBCT and MRI scans compare to the use of CycleGAN, specifically in the pelvic region.
 
-**Published in:** *Radiation Oncology*  
+**Published in:** *Radiation Oncology*
 **DOI:** [10.1186/s13014-025-02590-2](https://doi.org/10.1186/s13014-025-02590-2)
 
 ## Data layout expected by the training scripts
@@ -125,3 +125,65 @@ python tools/prepare_paired_dicom.py \
 ```
 
 This scans all case folders (e.g., `case001`, `case002`) and processes each case that contains both `MRI/` and `CT/` subfolders.
+
+## CBCT limited-FOV completion with PlanCT for CycleGAN
+
+For CBCT-to-sCT training, limited scan range/FOV can leave pelvic anatomy missing from the CBCT input. The CycleGAN CBCT loader can now build a **single-channel completed input** by using CBCT pixels inside the detected CBCT FOV and PlanCT pixels outside that mask.
+
+Expected case layout:
+
+```text
+<data_root>/train/
+  Case001/
+    CBCT/
+      0001.dcm
+      0002.dcm
+    PlanCT/
+      0001.dcm
+      0002.dcm
+    CT/
+      0001.dcm
+      0002.dcm
+```
+
+Run CBCT CycleGAN with PlanCT completion:
+
+```bash
+python CycleGAN/main_CBCT.py \
+  --itemA CBCT \
+  --train_dir ./data/CBCT_CycleGAN/train \
+  --val_dir ./data/CBCT_CycleGAN/validation \
+  --use_planct_completion true \
+  --planct_name PlanCT \
+  --fov_mask_mode nonzero
+```
+
+Mask modes:
+
+- `nonzero` (default): use CBCT where the raw CBCT pixel value is not zero; fill zero/padded regions from PlanCT.
+- `non_air`: use CBCT where CBCT HU is greater than `--fov_threshold` (default `-950`).
+- `all_cbct`: disable filling and keep all CBCT pixels.
+
+### Prepare simple CBCT/PlanCT/CT CycleGAN folders
+
+If raw case folders contain `CBCT/`, `PlanCT/`, and `CT/` series with different filenames or slice counts, use the organizer:
+
+```bash
+python tools/prepare_cbct_planct_cyclegan.py \
+  --cbct_dir /path/to/raw/Case001/CBCT \
+  --planct_dir /path/to/raw/Case001/PlanCT \
+  --ct_dir /path/to/raw/Case001/CT \
+  --output_case_dir ./data/CBCT_CycleGAN/train/Case001 \
+  --key_mode auto
+```
+
+Batch mode:
+
+```bash
+python tools/prepare_cbct_planct_cyclegan.py \
+  --input_root /path/to/raw/train_cases \
+  --output_root ./data/CBCT_CycleGAN/train \
+  --key_mode auto
+```
+
+The script aligns the three series by `InstanceNumber` or `ImagePositionPatient` z-position, keeps only common slices, and writes synchronized names (`0001.dcm`, `0002.dcm`, ...). This output is directly consumable by `CycleGAN/main_CBCT.py`.
