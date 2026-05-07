@@ -13,14 +13,14 @@ from CycleGAN import Generator as _Generator
 class Generator(_Generator):
     """Adapter matching the historical StarGAN-like constructor signature."""
 
-    def __init__(self, conv_dim=64, c_dim=3, repeat_num=6):
+    def __init__(self, conv_dim=64, c_dim=3, repeat_num=6, in_channels=1, out_channels=1):
         del c_dim, repeat_num
-        super().__init__(in_channels=1, features=conv_dim)
+        super().__init__(in_channels=in_channels, out_channels=out_channels, features=conv_dim)
 
 
 class Discriminator(_Discriminator):
     """Adapter matching the historical StarGAN-like constructor signature."""
 
-    def __init__(self, image_size=512, conv_dim=64, c_dim=3, repeat_num=6):
+    def __init__(self, image_size=512, conv_dim=64, c_dim=3, repeat_num=6, in_channels=1):
         del image_size, c_dim, repeat_num
-        super().__init__(in_channels=1, features=conv_dim)
+        super().__init__(in_channels=in_channels, features=conv_dim)
