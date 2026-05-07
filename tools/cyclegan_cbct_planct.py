@@ -37,6 +37,9 @@ def add_common_training_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--data_root", type=Path, default=PROJECT_ROOT / "data" / "CBCT_CycleGAN")
     parser.add_argument("--runs_root", type=Path, default=PROJECT_ROOT / "runs" / "CycleCBCT_PlanCT")
     parser.add_argument("--planct_name", default="PlanCT")
+    parser.add_argument("--input_modalities", default=None, help="comma-separated input folders, e.g. MRI,CBCT")
+    parser.add_argument("--target_name", default="CT", help="target/supervision folder, e.g. CT or PlanCT")
+    parser.add_argument("--use_planct_completion", type=str2bool, default=True)
     parser.add_argument("--fov_mask_mode", choices=["nonzero", "non_air", "all_cbct"], default="nonzero")
     parser.add_argument("--fov_threshold", type=float, default=-950.0)
     parser.add_argument("--batch_size", type=int, default=4)
@@ -124,14 +127,17 @@ def main() -> None:
             "--result_dir", str(args.runs_root / "results"),
             "--val_result_dir", str(args.runs_root / "val"),
             "--report_dir", str(args.runs_root / "report"),
-            "--use_planct_completion", "true",
+            "--use_planct_completion", str(args.use_planct_completion).lower(),
             "--planct_name", args.planct_name,
+            "--target_name", args.target_name,
             "--fov_mask_mode", args.fov_mask_mode,
             "--fov_threshold", str(args.fov_threshold),
             "--batch_size", str(args.batch_size),
             "--num_workers", str(args.num_workers),
             "--use_tensorboard", str(args.use_tensorboard).lower(),
         ]
+        if args.input_modalities:
+            command.extend(["--input_modalities", args.input_modalities])
         if mode == "train":
             command.extend([
                 "--num_epochs", str(args.num_epochs),

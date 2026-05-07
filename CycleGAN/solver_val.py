@@ -36,6 +36,10 @@ class Solver(object):
         # Item definition
         self.itemA = config.itemA
         self.planct_name = getattr(config, 'planct_name', 'PlanCT')
+        self.input_modalities = self.parse_modalities(getattr(config, 'input_modalities', None), self.itemA)
+        self.target_name = getattr(config, 'target_name', 'CT')
+        self.input_nc = len(self.input_modalities)
+        self.target_nc = 1
         self.use_planct_completion = getattr(config, 'use_planct_completion', False)
         self.fov_mask_mode = getattr(config, 'fov_mask_mode', 'nonzero')
         self.fov_threshold = getattr(config, 'fov_threshold', -950.0)
@@ -50,7 +54,7 @@ class Solver(object):
             if pt != ".DS_Store":
                 case_pt = os.path.join(config.val_dir, pt)
                 pt_CT_val, pt_itemA_val = self.read_case_series(case_pt)
-                pixel_spacing_case = self.get_pixel_spacing(os.path.join(case_pt, 'CT'))
+                pixel_spacing_case = self.get_pixel_spacing(os.path.join(case_pt, self.target_name))
                 self.CT_val.append(pt_CT_val)
                 self.itemA_val.append(pt_itemA_val)
                 self.pixel_spacing.append(pixel_spacing_case)
@@ -108,10 +112,22 @@ class Solver(object):
 
     def build_model(self):
         """Create a generator and a discriminator."""
-        self.G_AB = Generator(self.g_conv_dim, self.c_dim, self.g_repeat_num)
-        self.G_BA = Generator(self.g_conv_dim, self.c_dim, self.g_repeat_num)
-        self.D_A = Discriminator(self.image_size[0], self.d_conv_dim, self.c_dim, self.d_repeat_num)
-        self.D_B = Discriminator(self.image_size[0], self.d_conv_dim, self.c_dim, self.d_repeat_num)
+        self.G_AB = Generator(
+            self.g_conv_dim, self.c_dim, self.g_repeat_num,
+            in_channels=self.input_nc, out_channels=self.target_nc,
+        )
+        self.G_BA = Generator(
+            self.g_conv_dim, self.c_dim, self.g_repeat_num,
+            in_channels=self.target_nc, out_channels=self.input_nc,
+        )
+        self.D_A = Discriminator(
+            self.image_size[0], self.d_conv_dim, self.c_dim, self.d_repeat_num,
+            in_channels=self.input_nc,
+        )
+        self.D_B = Discriminator(
+            self.image_size[0], self.d_conv_dim, self.c_dim, self.d_repeat_num,
+            in_channels=self.target_nc,
+        )
 
         self.g_optimizer = torch.optim.AdamW(list(self.G_AB.parameters()) + list(self.G_BA.parameters()), self.g_lr, [self.beta1, self.beta2])
         self.d_A_optimizer = torch.optim.Adam(self.D_A.parameters(), self.d_lr, [self.beta1, self.beta2])
@@ -126,6 +142,13 @@ class Solver(object):
         self.G_BA.to(self.device)
         self.D_A.to(self.device)
         self.D_B.to(self.device)
+
+    def parse_modalities(self, value, default):
+        if value is None or value == '':
+            return [default]
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        return [item.strip() for item in value.split(',') if item.strip()]
 
     def print_network(self, model, name):
         """Print out the network information."""
@@ -189,6 +212,11 @@ class Solver(object):
         nor_hu = clip_in / (1500)
         return nor_hu
 
+    def _preprocess_modality(self, dicom, modality):
+        if modality.upper() in {'CT', 'CBCT', 'PLANCT', 'PLAN_CT', 'PLAN-CT'}:
+            return self._preprocess_cbct_ct(dicom)
+        return self._preprocess_mri(dicom)
+
     def _load_hu_and_raw(self, dicom):
         raw_pixels = dicom.pixel_array.astype(np.float32)
         slope = float(getattr(dicom, "RescaleSlope", 1.0))
@@ -216,38 +244,69 @@ class Solver(object):
         return np.where(fov_mask, cbct_norm, planct_norm)
 
     def read_case_series(self, case_directory):
-        ct_dir = os.path.join(case_directory, 'CT')
-        if not (self.use_planct_completion and self.itemA == 'CBCT'):
-            return self.read_dicom_series(ct_dir), self.read_dicom_series(os.path.join(case_directory, self.itemA))
+        target_dir = os.path.join(case_directory, self.target_name)
+        target_files = {filename for filename in os.listdir(target_dir) if filename.endswith('.dcm')}
 
-        itema_dir = os.path.join(case_directory, self.itemA)
-        planct_dir = os.path.join(case_directory, self.planct_name)
-        ct_files = {filename for filename in os.listdir(ct_dir) if filename.endswith('.dcm')}
-        planct_files = {filename for filename in os.listdir(planct_dir) if filename.endswith('.dcm')}
-        cbct_files = set()
-        if os.path.isdir(itema_dir):
-            cbct_files = {filename for filename in os.listdir(itema_dir) if filename.endswith('.dcm')}
-        common_files = sorted(ct_files & planct_files)
+        input_files_by_modality = {}
+        common_files = set(target_files)
+        for modality in self.input_modalities:
+            modality_dir = os.path.join(case_directory, modality)
+            if not os.path.isdir(modality_dir):
+                if self.use_planct_completion and modality == 'CBCT':
+                    input_files_by_modality[modality] = set()
+                    continue
+                raise RuntimeError(f"Missing input folder '{modality}' in {case_directory}")
+            modality_files = {filename for filename in os.listdir(modality_dir) if filename.endswith('.dcm')}
+            input_files_by_modality[modality] = modality_files
+            if not (self.use_planct_completion and modality == 'CBCT'):
+                common_files &= modality_files
+
+        planct_files = set()
+        if self.use_planct_completion:
+            planct_dir = os.path.join(case_directory, self.planct_name)
+            planct_files = {filename for filename in os.listdir(planct_dir) if filename.endswith('.dcm')}
+            common_files &= planct_files
+
+        common_files = sorted(common_files)
         if not common_files:
             raise RuntimeError(
-                f"No matched CT/PlanCT slices found in {case_directory}; "
-                f"expected identical .dcm filenames under 'CT' and '{self.planct_name}'."
+                f"No matched slices found in {case_directory}; expected identical .dcm "
+                f"filenames across inputs {self.input_modalities}, target '{self.target_name}', "
+                f"and '{self.planct_name}' when PlanCT completion is enabled."
             )
 
-        ct_slices = []
+        target_slices = []
         completed_slices = []
         for filename in common_files:
-            ct_slice = pydicom.dcmread(os.path.join(ct_dir, filename))
-            planct_slice = pydicom.dcmread(os.path.join(planct_dir, filename))
-            cbct_slice = None
-            if filename in cbct_files:
-                cbct_slice = pydicom.dcmread(os.path.join(itema_dir, filename))
-            ct_slices.append(self._preprocess_cbct_ct(ct_slice))
-            completed_slices.append(self._preprocess_completed_cbct(cbct_slice, planct_slice))
-        return np.stack(ct_slices), np.stack(completed_slices)
+            target_slice = pydicom.dcmread(os.path.join(target_dir, filename))
+            input_channels = []
+            for modality in self.input_modalities:
+                if modality == 'CBCT' and self.use_planct_completion:
+                    planct_slice = pydicom.dcmread(os.path.join(case_directory, self.planct_name, filename))
+                    cbct_slice = None
+                    if filename in input_files_by_modality[modality]:
+                        cbct_slice = pydicom.dcmread(os.path.join(case_directory, modality, filename))
+                    input_channels.append(self._preprocess_completed_cbct(cbct_slice, planct_slice))
+                else:
+                    input_slice = pydicom.dcmread(os.path.join(case_directory, modality, filename))
+                    input_channels.append(self._preprocess_modality(input_slice, modality))
+            target_slices.append(self._preprocess_modality(target_slice, self.target_name))
+            completed_slices.append(np.stack(input_channels, axis=0))
+        return np.stack(target_slices), np.stack(completed_slices)
 
     def read_itema_series(self, case_directory):
         return self.read_case_series(case_directory)[1]
+
+    def array_slice_to_tensor(self, array_slice, transform):
+        if array_slice.ndim == 2:
+            pil_array = Image.fromarray(array_slice)
+            return torch.tensor(transform(pil_array), dtype=torch.float32)
+
+        channel_tensors = []
+        for channel in array_slice:
+            pil_array = Image.fromarray(channel)
+            channel_tensors.append(torch.tensor(transform(pil_array), dtype=torch.float32))
+        return torch.cat(channel_tensors, dim=0)
 
     def read_dicom_series(self,dicom_directory):
         dicom_files = [os.path.join(dicom_directory, filename) for filename in os.listdir(dicom_directory) if filename.endswith('.dcm')]
@@ -508,7 +567,7 @@ class Solver(object):
                 # Translate fixed images for debugging.
                 if (i+1) % round(iter_per_epoch/self.sample_step_per_epoch) == 0:
                     with torch.no_grad():
-                        x_fake_list = [x_fixed]
+                        x_fake_list = [x_fixed[:, :1]]
                         x_fake_list.append(self.G_AB(x_fixed))
                         x_concat = torch.cat(x_fake_list, dim=3)
                         sample_path = os.path.join(self.sample_dir, 'Epoch-{}-Iter-{}-images.jpg'.format(epoch+1, i+1))
@@ -555,13 +614,8 @@ class Solver(object):
                         #=========================================================================================#
                         # Preprocess image.
                         #=========================================================================================#
-                        itemA_PIL_array = Image.fromarray(self.itemA_val[c][s])
-                        itemA_pixel_array = transform(itemA_PIL_array)
-                        itemA_image_sample = torch.tensor(itemA_pixel_array, dtype=torch.float32)
-
-                        CT_PIL_array = Image.fromarray(self.CT_val[c][s])
-                        CT_pixel_array = transform(CT_PIL_array)
-                        CT_image_sample = torch.tensor(CT_pixel_array, dtype=torch.float32)
+                        itemA_image_sample = self.array_slice_to_tensor(self.itemA_val[c][s], transform)
+                        CT_image_sample = self.array_slice_to_tensor(self.CT_val[c][s], transform)
 
                         #=========================================================================================#
                         # Generate image.
@@ -653,7 +707,7 @@ class Solver(object):
             if pt != ".DS_Store":
                 case_pt = os.path.join(self.test_dir, pt)
                 pt_CT_test, pt_itemA_test = self.read_case_series(case_pt)
-                pixel_spacing_case = self.get_pixel_spacing(os.path.join(case_pt, 'CT'))
+                pixel_spacing_case = self.get_pixel_spacing(os.path.join(case_pt, self.target_name))
                 CT_test.append(pt_CT_test)
                 itemA_test.append(pt_itemA_test)
                 pixel_spacing.append(pixel_spacing_case)
@@ -723,13 +777,8 @@ class Solver(object):
                     #=========================================================================================#
                     # Preprocess image.
                     #=========================================================================================#
-                    itemA_PIL_array = Image.fromarray(itemA_test[c][s])
-                    itemA_pixel_array = transform(itemA_PIL_array)
-                    itemA_image_sample = torch.tensor(itemA_pixel_array, dtype=torch.float32)
-
-                    CT_PIL_array = Image.fromarray(CT_test[c][s])
-                    CT_pixel_array = transform(CT_PIL_array)
-                    CT_image_sample = torch.tensor(CT_pixel_array, dtype=torch.float32)
+                    itemA_image_sample = self.array_slice_to_tensor(itemA_test[c][s], transform)
+                    CT_image_sample = self.array_slice_to_tensor(CT_test[c][s], transform)
                     #=========================================================================================#
                     # Generate image.
                     #=========================================================================================#

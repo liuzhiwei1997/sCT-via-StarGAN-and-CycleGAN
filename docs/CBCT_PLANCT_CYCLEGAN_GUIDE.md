@@ -126,3 +126,54 @@ Outputs are written under `runs/CycleCBCT_PlanCT/results` and reports under `run
 - Visually inspect completed inputs before training.
 - Avoid using the exact target CT as PlanCT input for validation/test, or metrics can be artificially optimistic on PlanCT-only z-slices.
 - Choose `--fov_mask_mode nonzero` if missing CBCT pixels are zero-padded; choose `non_air` if missing regions are near air HU.
+
+## MRI + CBCT input with PlanCT supervision
+
+If a registered MRI is available and you want to train `MRI + CBCT -> sCT` using `PlanCT` as the supervision target, prepare each case with same-named DICOM slices across `MRI/`, `CBCT/`, and `PlanCT/`:
+
+```text
+data/MRI_CBCT_PlanCT_CycleGAN/
+  train/
+    Case001/
+      MRI/      # registered/resampled MRI channel
+        0001.dcm
+      CBCT/     # registered/resampled CBCT channel
+        0001.dcm
+      PlanCT/   # target/supervision CT-like image
+        0001.dcm
+  validation/
+    Case101/{MRI,CBCT,PlanCT}/
+  test/proceeding/
+    Case201/{MRI,CBCT,PlanCT}/
+```
+
+Run training with two input channels and `PlanCT` as the target:
+
+```bash
+python tools/cyclegan_cbct_planct.py train \
+  --data_root ./data/MRI_CBCT_PlanCT_CycleGAN \
+  --runs_root ./runs/CycleMRI_CBCT_to_PlanCT \
+  --input_modalities MRI,CBCT \
+  --target_name PlanCT \
+  --use_planct_completion false \
+  --batch_size 4
+```
+
+Run testing with the same channel/target configuration:
+
+```bash
+python tools/cyclegan_cbct_planct.py test \
+  --data_root ./data/MRI_CBCT_PlanCT_CycleGAN \
+  --runs_root ./runs/CycleMRI_CBCT_to_PlanCT \
+  --input_modalities MRI,CBCT \
+  --target_name PlanCT \
+  --use_planct_completion false \
+  --test_epochs 500
+```
+
+Notes:
+
+- This is a two-channel input: channel 1 is MRI, channel 2 is CBCT. The generator output remains one CT-like channel.
+- `PlanCT` is used as the training target in this setup, so it is not used for CBCT completion. Keep `--use_planct_completion false` to avoid leaking the target into the input.
+- MRI, CBCT, and PlanCT must be registered and resampled to the same voxel grid before training.
+- If CBCT does not cover the full z-range but MRI and PlanCT do, either crop training to the common MRI/CBCT/PlanCT range or add a separate missing-CBCT handling strategy before using two-channel training.

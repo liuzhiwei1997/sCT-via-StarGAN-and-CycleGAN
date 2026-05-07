@@ -6,6 +6,12 @@ def str2bool(v):
     return v.lower() in ('true')
 
 
+def parse_modalities(value):
+    if value is None or value == '':
+        return None
+    return [item.strip() for item in value.split(',') if item.strip()]
+
+
 def main(config):
     from solver_val import Solver
     from data_loader_aug import get_loader
@@ -37,7 +43,8 @@ def main(config):
                             config.itemA, config.image_size,
                             config.batch_size, config.mode, config.num_workers,
                             config.planct_name, config.use_planct_completion,
-                            config.fov_mask_mode, config.fov_threshold)
+                            config.fov_mask_mode, config.fov_threshold,
+                            parse_modalities(config.input_modalities), config.target_name)
 
     # Solver for training and testing StarGAN.
     solver = Solver(image_loader, config)
@@ -95,6 +102,10 @@ if __name__ == '__main__':
                         help='how to detect the valid CBCT field-of-view before PlanCT filling')
     parser.add_argument('--fov_threshold', type=float, default=-950.0,
                         help='HU threshold used when --fov_mask_mode non_air')
+    parser.add_argument('--input_modalities', type=str, default=None,
+                        help='comma-separated input folders, e.g. MRI,CBCT for two-channel input')
+    parser.add_argument('--target_name', type=str, default='CT',
+                        help='target folder name used as the supervision domain, e.g. CT or PlanCT')
 
     # Directories.
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -43,11 +43,15 @@ class PairedDICOMFolder(data.Dataset):
         use_planct_completion=False,
         fov_mask_mode="nonzero",
         fov_threshold=-950.0,
+        input_modalities=None,
+        target_name="CT",
     ):
         self.root = Path(root)
         self.item_a = item_a
         self.mode = mode
         self.planct_name = planct_name
+        self.input_modalities = list(input_modalities or [item_a])
+        self.target_name = target_name
         self.use_planct_completion = use_planct_completion
         self.fov_mask_mode = fov_mask_mode
         self.fov_threshold = fov_threshold
@@ -58,28 +62,34 @@ class PairedDICOMFolder(data.Dataset):
             planct_msg = f", '{self.planct_name}'" if self.use_planct_completion else ""
             raise RuntimeError(
                 f"No paired DICOM slices were found in '{self.root}' for "
-                f"modalities '{self.item_a}', 'CT'{planct_msg}."
+                f"inputs {self.input_modalities}, target '{self.target_name}'{planct_msg}."
             )
 
     def __len__(self):
         return len(self.pairs)
 
     def __getitem__(self, idx):
-        item_a_path, ct_path, planct_path = self.pairs[idx]
-        if self.use_planct_completion:
-            item_a_image = self._load_completed_cbct_image(item_a_path, planct_path)
-        else:
-            item_a_image = self._load_image(item_a_path, self.item_a)
-        ct_image = self._load_image(ct_path, "CT")
+        input_paths, target_path, planct_path = self.pairs[idx]
+        input_images = []
+        for modality in self.input_modalities:
+            modality_path = input_paths.get(modality)
+            if modality == "CBCT" and self.use_planct_completion:
+                input_images.append(self._load_completed_cbct_image(modality_path, planct_path))
+            else:
+                input_images.append(self._load_image(modality_path, modality))
+        target_image = self._load_image(target_path, self.target_name)
 
         # Reuse the same RNG seed so paired medical slices receive identical
         # random spatial augmentation.
         seed = torch.randint(0, 2**32, (1,)).item()
+        input_tensors = []
+        for image in input_images:
+            torch.manual_seed(seed)
+            input_tensors.append(self.transform(image))
+        item_a = torch.cat(input_tensors, dim=0)
         torch.manual_seed(seed)
-        item_a = self.transform(item_a_image)
-        torch.manual_seed(seed)
-        ct = self.transform(ct_image)
-        return item_a, ct
+        target = self.transform(target_image)
+        return item_a, target
 
     def _build_transform(self, image_size, mode):
         transform = []
@@ -94,38 +104,57 @@ class PairedDICOMFolder(data.Dataset):
         pairs = []
 
         case_dirs = [path for path in self.root.iterdir() if path.is_dir()]
-        has_flat_item = (self.root / self.item_a).is_dir()
+        has_flat_target = (self.root / self.target_name).is_dir()
         has_flat_planct = (self.root / self.planct_name).is_dir()
-        has_flat_ct = (self.root / "CT").is_dir()
-        if has_flat_ct and (has_flat_item or (self.use_planct_completion and has_flat_planct)):
+        has_flat_inputs = all((self.root / modality).is_dir() for modality in self.input_modalities)
+        has_optional_cbct_completion = (
+            self.use_planct_completion and has_flat_planct and all(
+                modality == "CBCT" or (self.root / modality).is_dir()
+                for modality in self.input_modalities
+            )
+        )
+        if has_flat_target and (has_flat_inputs or has_optional_cbct_completion):
             case_dirs.append(self.root)
 
         for case_dir in sorted(set(case_dirs)):
-            item_dir = case_dir / self.item_a
-            ct_dir = case_dir / "CT"
+            target_dir = case_dir / self.target_name
             planct_dir = case_dir / self.planct_name
-            if not ct_dir.is_dir():
-                continue
-            if not self.use_planct_completion and not item_dir.is_dir():
+            if not target_dir.is_dir():
                 continue
             if self.use_planct_completion and not planct_dir.is_dir():
                 continue
 
-            item_files = {}
-            if item_dir.is_dir():
-                item_files = {path.name: path for path in sorted(item_dir.glob("*.dcm"))}
-            ct_files = {path.name: path for path in sorted(ct_dir.glob("*.dcm"))}
-
-            if self.use_planct_completion:
-                planct_files = {path.name: path for path in sorted(planct_dir.glob("*.dcm"))}
-                common_names = planct_files.keys() & ct_files.keys()
-                for name in sorted(common_names):
-                    pairs.append((item_files.get(name), ct_files[name], planct_files[name]))
+            input_files_by_modality = {}
+            missing_required_input = False
+            for modality in self.input_modalities:
+                modality_dir = case_dir / modality
+                if not modality_dir.is_dir():
+                    if self.use_planct_completion and modality == "CBCT":
+                        input_files_by_modality[modality] = {}
+                        continue
+                    missing_required_input = True
+                    break
+                input_files_by_modality[modality] = {path.name: path for path in sorted(modality_dir.glob("*.dcm"))}
+            if missing_required_input:
                 continue
 
-            common_names = item_files.keys() & ct_files.keys()
+            target_files = {path.name: path for path in sorted(target_dir.glob("*.dcm"))}
+            common_names = set(target_files.keys())
+            planct_files = {}
+            if self.use_planct_completion:
+                planct_files = {path.name: path for path in sorted(planct_dir.glob("*.dcm"))}
+                common_names &= set(planct_files.keys())
+
+            for modality, modality_files in input_files_by_modality.items():
+                if self.use_planct_completion and modality == "CBCT":
+                    continue
+                common_names &= set(modality_files.keys())
+
             for name in sorted(common_names):
-                pairs.append((item_files[name], ct_files[name], None))
+                input_paths = {}
+                for modality, modality_files in input_files_by_modality.items():
+                    input_paths[modality] = modality_files.get(name)
+                pairs.append((input_paths, target_files[name], planct_files.get(name)))
 
         return pairs
 
@@ -191,6 +220,8 @@ def get_loader(
     use_planct_completion=False,
     fov_mask_mode="nonzero",
     fov_threshold=-950.0,
+    input_modalities=None,
+    target_name="CT",
 ):
     dataset = PairedDICOMFolder(
         train_dir,
@@ -201,6 +232,8 @@ def get_loader(
         use_planct_completion=use_planct_completion,
         fov_mask_mode=fov_mask_mode,
         fov_threshold=fov_threshold,
+        input_modalities=input_modalities,
+        target_name=target_name,
     )
     return data.DataLoader(
         dataset=dataset,

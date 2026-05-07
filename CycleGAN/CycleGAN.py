@@ -76,7 +76,7 @@ class Up(nn.Module):
   
 #Generator Model
 class Generator(nn.Module):
-    def __init__(self, in_channels=1, features=32):
+    def __init__(self, in_channels=1, out_channels=1, features=32):
         super().__init__()
         self.inc = InceptionBlock(in_channels,features)
         self.down1 = Down(features,features*2, Inception=True)
@@ -89,7 +89,7 @@ class Generator(nn.Module):
         self.up3 = Up(features*8+features*4,features*4)
         self.up4 = Up(features*4+features*2,features*2,Inception=True)
         self.up5 = Up(features*2+features,features,Inception=True)
-        self.last = nn.Sequential(nn.Conv2d(features, 1,1),nn.Sigmoid())
+        self.last = nn.Sequential(nn.Conv2d(features, out_channels,1),nn.Sigmoid())
     
     def forward(self, x):
         x1 = self.inc(x)
@@ -237,10 +237,16 @@ def get_gen_loss(real_A, real_B, gen_AB, gen_BA, disc_A, disc_B, adv_criterion, 
     adv_loss_AB, fake_B = get_gen_adversarial_loss(real_A, disc_B, gen_AB, adv_criterion)
     gen_adversarial_loss = adv_loss_BA + adv_loss_AB
 
-    # Identity Loss -- get_identity_loss(real_X, gen_YX, identity_criterion)
-    identity_loss_A, identity_A = get_identity_loss(real_A, gen_BA, identity_criterion)
-    identity_loss_B, identity_B = get_identity_loss(real_B, gen_AB, identity_criterion)
-    gen_identity_loss = identity_loss_A + identity_loss_B
+    # Identity Loss -- only valid when both domains have the same channel count.
+    # Multi-modal inputs such as MRI+CBCT -> PlanCT have different channel counts
+    # between domain A and B, so applying the opposite generator directly to a
+    # real image from the wrong channel domain would be invalid.
+    if real_A.size(1) == real_B.size(1):
+        identity_loss_A, identity_A = get_identity_loss(real_A, gen_BA, identity_criterion)
+        identity_loss_B, identity_B = get_identity_loss(real_B, gen_AB, identity_criterion)
+        gen_identity_loss = identity_loss_A + identity_loss_B
+    else:
+        gen_identity_loss = torch.zeros((), device=real_A.device)
 
     # Cycle-consistency Loss -- get_cycle_consistency_loss(real_X, fake_Y, gen_YX, cycle_criterion)
     cycle_loss_BA, cycle_A = get_cycle_consistency_loss(real_A, fake_B, gen_BA, cycle_criterion)
