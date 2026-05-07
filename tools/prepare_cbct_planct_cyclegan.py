@@ -11,6 +11,9 @@ This script aligns input series by InstanceNumber or z-position, keeps the full
 PlanCT/CT z-range, and copies CBCT only for slices where CBCT exists. Missing
 CBCT slices are intentionally omitted so the loader uses PlanCT as the full-slice
 input for those z positions.
+
+Important: this script does not perform image registration or resampling. Register
+and resample CBCT, PlanCT, and target CT to the same voxel grid before using it.
 """
 
 from __future__ import annotations
@@ -140,7 +143,11 @@ def process_one_case(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Prepare full-z-range CBCT/PlanCT/CT DICOM folders for CycleGAN CBCT-to-sCT training"
+        description="Prepare full-z-range CBCT/PlanCT/CT DICOM folders for CycleGAN CBCT-to-sCT training",
+        epilog=(
+            "Registration is not performed here. Register and resample CBCT, "
+            "PlanCT, and target CT to the same voxel grid before running this tool."
+        ),
     )
     parser.add_argument("--cbct_dir", type=Path, help="Single-case input CBCT series directory")
     parser.add_argument("--planct_dir", type=Path, help="Single-case input PlanCT series directory")

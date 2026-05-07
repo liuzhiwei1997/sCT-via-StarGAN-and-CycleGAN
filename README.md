@@ -167,6 +167,18 @@ Mask modes:
 
 For z-direction completion, the required full output range is defined by matching `PlanCT/` and `CT/` filenames. `CBCT/` files are optional on that range. If `PlanCT/0001.dcm` and `CT/0001.dcm` exist but `CBCT/0001.dcm` does not, the loader uses `PlanCT/0001.dcm` as the generator input and `CT/0001.dcm` as the target.
 
+### Registration and quality checklist before preparing folders
+
+The preparation script only matches slices and renames/copies DICOM files; it **does not** register, resample, crop, or correct image geometry. Before running `tools/prepare_cbct_planct_cyclegan.py`, prepare each case so that `CBCT`, `PlanCT`, and target `CT` are already spatially consistent:
+
+- Register `PlanCT` to the CBCT/target-CT patient coordinate system before completion. Use at least rigid registration; consider deformable registration when anatomy, bladder/rectum filling, couch position, or body contour differs substantially.
+- Resample all modalities to the same image grid: same matrix size, pixel spacing, slice spacing/thickness, orientation, origin, and z ordering. The loader combines same-named slices pixel-by-pixel, so mismatched geometry will paste PlanCT anatomy into the wrong CBCT locations.
+- Check that `PlanCT/` and target `CT/` cover the full pelvis range you want the sCT to output. `CBCT/` may cover only a subset of those z-slices.
+- Keep the target `CT` as the evaluation/training reference and `PlanCT` as input prior information. If `PlanCT` is exactly the same DICOM series as the target `CT`, metrics can be artificially optimistic on PlanCT-only z-slices because the input already contains the target anatomy.
+- Apply consistent preprocessing before export: artifact correction if available, body/FOV mask review, HU calibration/rescale tags (`RescaleSlope`, `RescaleIntercept`), and removal of corrupted or duplicate slices.
+- Split train/validation/test by patient, not by slice, to avoid leakage across neighboring slices from the same patient.
+- Inspect several completed inputs visually after preparation: CBCT-covered slices should show CBCT inside the FOV and PlanCT outside; CBCT-missing superior/inferior slices should be complete PlanCT inputs aligned with target CT.
+
 ### Prepare simple CBCT/PlanCT/CT CycleGAN folders
 
 If raw case folders contain `CBCT/`, `PlanCT/`, and `CT/` series with different filenames or slice counts, use the organizer:
