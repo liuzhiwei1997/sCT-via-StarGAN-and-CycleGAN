@@ -28,14 +28,16 @@ def main(config):
     #    os.makedirs(config.result_dir)
     if not os.path.exists(config.report_dir):
         os.makedirs(config.report_dir)
-        
+
     # Data loader.
     image_loader = None
     class_loader = None
 
     image_loader = get_loader(config.train_dir,
-                            config.itemA, config.image_size, 
-                            config.batch_size, config.mode, config.num_workers)
+                            config.itemA, config.image_size,
+                            config.batch_size, config.mode, config.num_workers,
+                            config.planct_name, config.use_planct_completion,
+                            config.fov_mask_mode, config.fov_threshold)
 
     # Solver for training and testing StarGAN.
     solver = Solver(image_loader, config)
@@ -44,8 +46,8 @@ def main(config):
         solver.train()
     elif config.mode == 'test':
         solver.test()
-       
-        
+
+
 if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
@@ -55,28 +57,28 @@ if __name__ == '__main__':
     parser.add_argument('--image_size', type=int, default=(512,512), choices=[(256,256), (512,512)], help='image resolution')
     parser.add_argument('--g_conv_dim', type=int, default=64, help='number of conv filters in the first layer of G')
     parser.add_argument('--d_conv_dim', type=int, default=64, help='number of conv filters in the first layer of D')
-    # parser.add_argument('--c_conv_dim', type=int, default=64, help='number of conv filters in the first layer of C') 
+    # parser.add_argument('--c_conv_dim', type=int, default=64, help='number of conv filters in the first layer of C')
     parser.add_argument('--g_repeat_num', type=int, default=6, help='number of residual blocks in G')
     parser.add_argument('--d_repeat_num', type=int, default=6, help='number of strided conv layers in D')
-    # parser.add_argument('--c_repeat_num', type=int, default=6, help='number of strided conv layers in C')     
-    # parser.add_argument('--lambda_cls', type=float, default=0.25, help='weight for domain classification loss')  
+    # parser.add_argument('--c_repeat_num', type=int, default=6, help='number of strided conv layers in C')
+    # parser.add_argument('--lambda_cls', type=float, default=0.25, help='weight for domain classification loss')
     parser.add_argument('--lambda_rec', type=float, default=1.3, help='weight for reconstruction loss')
     parser.add_argument('--lambda_gp', type=float, default=1, help='weight for gradient penalty')
-    
+
     # Training configuration.
     parser.add_argument('--batch_size', type=int, default=4, help='mini-batch size')
     parser.add_argument('--num_epochs', type=int, default=500, help='number of total epochs for training D')
     parser.add_argument('--num_epochs_decay', type=int, default=200, help='number of epochs for decaying lr')
     parser.add_argument('--g_lr', type=float, default=0.0001, help='learning rate for G')
     parser.add_argument('--d_lr', type=float, default=0.0001, help='learning rate for D')
-    # parser.add_argument('--c_lr', type=float, default=0.00012, help='learning rate for C')      
+    # parser.add_argument('--c_lr', type=float, default=0.00012, help='learning rate for C')
     parser.add_argument('--n_critic', type=int, default=1, help='number of D updates per each G update')
     parser.add_argument('--beta1', type=float, default=0.0, help='beta1 for Adam optimizer')
     parser.add_argument('--beta2', type=float, default=0.999, help='beta2 for Adam optimizer')
     # parser.add_argument('--c_beta1', type=float, default=0.9, help='beta1 for Adam optimizer')
-    
+
     parser.add_argument('--resume_epoch', type=int, default=None, help='resume training from this epoch')
-    
+
     # Test configuration.
     parser.add_argument('--test_epochs', type=int, default=None, help='test model from this step')
 
@@ -84,6 +86,15 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=0)
     parser.add_argument('--mode', type=str, default='train', choices=['train', 'test'])
     parser.add_argument('--use_tensorboard', type=str2bool, default=True)
+    parser.add_argument('--use_planct_completion', type=str2bool, default=True,
+                        help='complete limited-FOV CBCT with PlanCT outside the CBCT mask')
+    parser.add_argument('--planct_name', type=str, default='PlanCT',
+                        help='folder name that contains planning CT slices for CBCT completion')
+    parser.add_argument('--fov_mask_mode', type=str, default='nonzero',
+                        choices=['nonzero', 'non_air', 'all_cbct'],
+                        help='how to detect the valid CBCT field-of-view before PlanCT filling')
+    parser.add_argument('--fov_threshold', type=float, default=-950.0,
+                        help='HU threshold used when --fov_mask_mode non_air')
 
     # Directories.
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -101,13 +112,13 @@ if __name__ == '__main__':
     parser.add_argument('--result_dir', type=str, default=os.path.join(default_runs_root, 'results'))
     parser.add_argument('--val_result_dir', type=str, default=os.path.join(default_runs_root, 'val'))
     parser.add_argument('--report_dir', type=str, default=os.path.join(default_runs_root, 'report'))
-    
+
     # Step size.
     parser.add_argument('--log_step', type=int, default=20) #default=10
     parser.add_argument('--sample_step_per_epoch', type=int, default=2) #default=1000
     parser.add_argument('--lr_update_step', type=int, default=2) #default=1000
 
-    config = parser.parse_args()  
+    config = parser.parse_args()
     print(config)
     config_txt_path = os.path.join(default_runs_root, 'config')
     if not os.path.exists(config_txt_path):
@@ -118,4 +129,4 @@ if __name__ == '__main__':
     main(config)
 
 
-    
+
