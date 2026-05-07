@@ -110,6 +110,8 @@ class PairedDICOMFolder(data.Dataset):
                 continue
             if self.use_planct_completion and not planct_dir.is_dir():
                 continue
+            if self.use_planct_completion and not planct_dir.is_dir():
+                continue
 
             item_files = {}
             if item_dir.is_dir():
