@@ -66,6 +66,27 @@ def main() -> None:
     prepare_all.add_argument("--round_digits", type=int, default=3)
     prepare_all.add_argument("--dry_run", action="store_true", help="print commands without executing them")
 
+    register_split = subparsers.add_parser("register-split", help="register one raw split to a fixed grid")
+    register_split.add_argument("--input_root", type=Path, required=True)
+    register_split.add_argument("--output_root", type=Path, required=True)
+    register_split.add_argument("--fixed_name", default="PlanCT")
+    register_split.add_argument("--moving_modalities", default="MRI,CBCT")
+    register_split.add_argument("--transform", choices=["rigid", "affine", "none"], default="rigid")
+    register_split.add_argument("--interpolator", choices=["linear", "nearest", "bspline"], default="linear")
+    register_split.add_argument("--default_value", type=float, default=-1000.0)
+    register_split.add_argument("--dry_run", action="store_true", help="print command without executing it")
+
+    register_all = subparsers.add_parser("register-all", help="register train/validation/test splits to a fixed grid")
+    register_all.add_argument("--raw_root", type=Path, required=True, help="root with train/, validation/, and test/proceeding/")
+    register_all.add_argument("--registered_root", type=Path, required=True)
+    register_all.add_argument("--test_subdir", default="test/proceeding")
+    register_all.add_argument("--fixed_name", default="PlanCT")
+    register_all.add_argument("--moving_modalities", default="MRI,CBCT")
+    register_all.add_argument("--transform", choices=["rigid", "affine", "none"], default="rigid")
+    register_all.add_argument("--interpolator", choices=["linear", "nearest", "bspline"], default="linear")
+    register_all.add_argument("--default_value", type=float, default=-1000.0)
+    register_all.add_argument("--dry_run", action="store_true", help="print commands without executing them")
+
     train = subparsers.add_parser("train", help="train CBCT->sCT CycleGAN with PlanCT completion")
     add_common_training_args(train)
     train.add_argument("--num_epochs", type=int, default=500)
@@ -80,6 +101,42 @@ def main() -> None:
     test.add_argument("--use_tensorboard", type=str2bool, default=False)
 
     args = parser.parse_args()
+
+    if args.command == "register-split":
+        command = [
+            sys.executable,
+            "tools/register_dicom_series.py",
+            "--input_root", str(args.input_root),
+            "--output_root", str(args.output_root),
+            "--fixed_name", args.fixed_name,
+            "--moving_modalities", args.moving_modalities,
+            "--transform", args.transform,
+            "--interpolator", args.interpolator,
+            "--default_value", str(args.default_value),
+        ]
+        run_command(command, dry_run=args.dry_run)
+        return
+
+    if args.command == "register-all":
+        split_pairs = [
+            (args.raw_root / "train", args.registered_root / "train"),
+            (args.raw_root / "validation", args.registered_root / "validation"),
+            (args.raw_root / args.test_subdir, args.registered_root / args.test_subdir),
+        ]
+        for input_root, output_root in split_pairs:
+            command = [
+                sys.executable,
+                "tools/register_dicom_series.py",
+                "--input_root", str(input_root),
+                "--output_root", str(output_root),
+                "--fixed_name", args.fixed_name,
+                "--moving_modalities", args.moving_modalities,
+                "--transform", args.transform,
+                "--interpolator", args.interpolator,
+                "--default_value", str(args.default_value),
+            ]
+            run_command(command, dry_run=args.dry_run)
+        return
 
     if args.command == "prepare-split":
         command = [

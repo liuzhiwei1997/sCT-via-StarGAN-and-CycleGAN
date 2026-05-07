@@ -34,7 +34,38 @@ raw_cbct_planct/
         CT/
 ```
 
-Important: registration/resampling must happen before using this repository. The scripts do not register images.
+Important: registration/resampling must happen before using this repository. The convenience wrapper now includes a registration step for MRI/CBCT-to-PlanCT preprocessing, but you should still visually inspect the output and prefer a clinically validated registration workflow when available.
+
+## Register MRI/CBCT to PlanCT before preparation
+
+For MRI+CBCT or CBCT+PlanCT workflows, first resample moving modalities to the PlanCT grid. This improves pixel correspondence before the model sees multi-channel inputs and reduces anatomy leakage from misaligned PlanCT completion.
+
+Register all train/validation/test splits:
+
+```bash
+python tools/cyclegan_cbct_planct.py register-all \
+  --raw_root ./raw_cbct_planct \
+  --registered_root ./registered_cbct_planct \
+  --fixed_name PlanCT \
+  --moving_modalities MRI,CBCT \
+  --transform rigid
+```
+
+Then prepare the registered folders:
+
+```bash
+python tools/cyclegan_cbct_planct.py prepare-all \
+  --raw_root ./registered_cbct_planct \
+  --data_root ./data/CBCT_CycleGAN \
+  --key_mode auto
+```
+
+Notes:
+
+- `--transform rigid` is the default and safest first choice; use `affine` only if scanner geometry/scaling differences justify it.
+- `--transform none` only resamples using the existing DICOM geometry and assumes the series are already aligned.
+- MRI/CBCT registration can fail when FOV overlap is small or anatomy differs; inspect overlays before training.
+- The registration tool writes synchronized DICOM names (`0001.dcm`, `0002.dcm`, ...), so downstream pairing is simpler.
 
 ## One-command preparation
 
