@@ -49,8 +49,7 @@ class Solver(object):
         for pt in os.listdir(config.val_dir):
             if pt != ".DS_Store":
                 case_pt = os.path.join(config.val_dir, pt)
-                pt_CT_val = self.read_dicom_series(os.path.join(case_pt, 'CT'))
-                pt_itemA_val = self.read_itema_series(case_pt)
+                pt_CT_val, pt_itemA_val = self.read_case_series(case_pt)
                 pixel_spacing_case = self.get_pixel_spacing(os.path.join(case_pt, 'CT'))
                 self.CT_val.append(pt_CT_val)
                 self.itemA_val.append(pt_itemA_val)
@@ -206,34 +205,49 @@ class Solver(object):
         raise ValueError("fov_mask_mode must be one of: 'nonzero', 'non_air', 'all_cbct'")
 
     def _preprocess_completed_cbct(self, cbct_dicom, planct_dicom):
-        cbct_hu, cbct_raw = self._load_hu_and_raw(cbct_dicom)
         planct_norm = self._preprocess_cbct_ct(planct_dicom)
+        if cbct_dicom is None:
+            return planct_norm
+
+        cbct_hu, cbct_raw = self._load_hu_and_raw(cbct_dicom)
         cbct_norm = np.clip(cbct_hu, -1000, 1000)
         cbct_norm = (cbct_norm + 1000.) / (1000. + 1000.)
         fov_mask = self._build_cbct_fov_mask(cbct_hu, cbct_raw)
         return np.where(fov_mask, cbct_norm, planct_norm)
 
-    def read_itema_series(self, case_directory):
-        itema_dir = os.path.join(case_directory, self.itemA)
+    def read_case_series(self, case_directory):
+        ct_dir = os.path.join(case_directory, 'CT')
         if not (self.use_planct_completion and self.itemA == 'CBCT'):
-            return self.read_dicom_series(itema_dir)
+            return self.read_dicom_series(ct_dir), self.read_dicom_series(os.path.join(case_directory, self.itemA))
 
+        itema_dir = os.path.join(case_directory, self.itemA)
         planct_dir = os.path.join(case_directory, self.planct_name)
-        cbct_files = sorted([filename for filename in os.listdir(itema_dir) if filename.endswith('.dcm')])
+        ct_files = {filename for filename in os.listdir(ct_dir) if filename.endswith('.dcm')}
         planct_files = {filename for filename in os.listdir(planct_dir) if filename.endswith('.dcm')}
-        common_files = [filename for filename in cbct_files if filename in planct_files]
+        cbct_files = set()
+        if os.path.isdir(itema_dir):
+            cbct_files = {filename for filename in os.listdir(itema_dir) if filename.endswith('.dcm')}
+        common_files = sorted(ct_files & planct_files)
         if not common_files:
             raise RuntimeError(
-                f"No matched CBCT/PlanCT slices found in {case_directory}; "
-                f"expected identical .dcm filenames under '{self.itemA}' and '{self.planct_name}'."
+                f"No matched CT/PlanCT slices found in {case_directory}; "
+                f"expected identical .dcm filenames under 'CT' and '{self.planct_name}'."
             )
 
+        ct_slices = []
         completed_slices = []
         for filename in common_files:
-            cbct_slice = pydicom.dcmread(os.path.join(itema_dir, filename))
+            ct_slice = pydicom.dcmread(os.path.join(ct_dir, filename))
             planct_slice = pydicom.dcmread(os.path.join(planct_dir, filename))
+            cbct_slice = None
+            if filename in cbct_files:
+                cbct_slice = pydicom.dcmread(os.path.join(itema_dir, filename))
+            ct_slices.append(self._preprocess_cbct_ct(ct_slice))
             completed_slices.append(self._preprocess_completed_cbct(cbct_slice, planct_slice))
-        return np.stack(completed_slices)
+        return np.stack(ct_slices), np.stack(completed_slices)
+
+    def read_itema_series(self, case_directory):
+        return self.read_case_series(case_directory)[1]
 
     def read_dicom_series(self,dicom_directory):
         dicom_files = [os.path.join(dicom_directory, filename) for filename in os.listdir(dicom_directory) if filename.endswith('.dcm')]
@@ -638,8 +652,7 @@ class Solver(object):
         for pt in os.listdir(self.test_dir):
             if pt != ".DS_Store":
                 case_pt = os.path.join(self.test_dir, pt)
-                pt_CT_test = self.read_dicom_series(os.path.join(case_pt, 'CT'))
-                pt_itemA_test = self.read_itema_series(case_pt)
+                pt_CT_test, pt_itemA_test = self.read_case_series(case_pt)
                 pixel_spacing_case = self.get_pixel_spacing(os.path.join(case_pt, 'CT'))
                 CT_test.append(pt_CT_test)
                 itemA_test.append(pt_itemA_test)

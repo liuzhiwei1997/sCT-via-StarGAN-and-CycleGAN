@@ -128,7 +128,7 @@ This scans all case folders (e.g., `case001`, `case002`) and processes each case
 
 ## CBCT limited-FOV completion with PlanCT for CycleGAN
 
-For CBCT-to-sCT training, limited scan range/FOV can leave pelvic anatomy missing from the CBCT input. The CycleGAN CBCT loader can now build a **single-channel completed input** by using CBCT pixels inside the detected CBCT FOV and PlanCT pixels outside that mask.
+For CBCT-to-sCT training, limited scan range/FOV can leave pelvic anatomy missing from the CBCT input. The CycleGAN CBCT loader can now build a **single-channel completed input** for the full pelvis: slices with CBCT use CBCT pixels inside the detected FOV and PlanCT pixels outside that mask, while z-slices not covered by CBCT use PlanCT as the complete input.
 
 Expected case layout:
 
@@ -136,14 +136,15 @@ Expected case layout:
 <data_root>/train/
   Case001/
     CBCT/
-      0001.dcm
-      0002.dcm
+      0002.dcm        # optional per z-slice; only present where CBCT covers the pelvis
     PlanCT/
       0001.dcm
       0002.dcm
+      0003.dcm
     CT/
       0001.dcm
       0002.dcm
+      0003.dcm
 ```
 
 Run CBCT CycleGAN with PlanCT completion:
@@ -162,7 +163,9 @@ Mask modes:
 
 - `nonzero` (default): use CBCT where the raw CBCT pixel value is not zero; fill zero/padded regions from PlanCT.
 - `non_air`: use CBCT where CBCT HU is greater than `--fov_threshold` (default `-950`).
-- `all_cbct`: disable filling and keep all CBCT pixels.
+- `all_cbct`: disable in-plane filling for slices that have CBCT; PlanCT-only z-slices still use PlanCT because no CBCT slice exists.
+
+For z-direction completion, the required full output range is defined by matching `PlanCT/` and `CT/` filenames. `CBCT/` files are optional on that range. If `PlanCT/0001.dcm` and `CT/0001.dcm` exist but `CBCT/0001.dcm` does not, the loader uses `PlanCT/0001.dcm` as the generator input and `CT/0001.dcm` as the target.
 
 ### Prepare simple CBCT/PlanCT/CT CycleGAN folders
 
@@ -186,4 +189,4 @@ python tools/prepare_cbct_planct_cyclegan.py \
   --key_mode auto
 ```
 
-The script aligns the three series by `InstanceNumber` or `ImagePositionPatient` z-position, keeps only common slices, and writes synchronized names (`0001.dcm`, `0002.dcm`, ...). This output is directly consumable by `CycleGAN/main_CBCT.py`.
+The script aligns the series by `InstanceNumber` or `ImagePositionPatient` z-position, keeps the full common `PlanCT`/target `CT` z-range, and writes synchronized names (`0001.dcm`, `0002.dcm`, ...). CBCT files are copied only for z-slices where CBCT exists; missing CBCT files are intentional and cause `CycleGAN/main_CBCT.py` to use PlanCT for those full slices.

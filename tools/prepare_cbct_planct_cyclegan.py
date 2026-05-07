@@ -3,12 +3,14 @@
 
 The CycleGAN CBCT pipeline expects identical filenames under each case:
 
-    case001/CBCT/0001.dcm
+    case001/CBCT/0001.dcm      # present only when CBCT covers this z slice
     case001/PlanCT/0001.dcm
     case001/CT/0001.dcm
 
-This script aligns the three input series by InstanceNumber or z-position,
-keeps only the common slices, and copies them into the simplified layout above.
+This script aligns input series by InstanceNumber or z-position, keeps the full
+PlanCT/CT z-range, and copies CBCT only for slices where CBCT exists. Missing
+CBCT slices are intentionally omitted so the loader uses PlanCT as the full-slice
+input for those z positions.
 """
 
 from __future__ import annotations
@@ -58,7 +60,7 @@ def build_map(infos: Iterable[SliceInfo], round_digits: int) -> Dict[float, Path
     return mapping
 
 
-def copy_triplets(
+def copy_full_range(
     cbct_map: Dict[float, Path],
     planct_map: Dict[float, Path],
     ct_map: Dict[float, Path],
@@ -67,33 +69,37 @@ def copy_triplets(
     planct_name: str,
     ct_name: str,
     dry_run: bool = False,
-) -> Tuple[int, int, int, int]:
+) -> Tuple[int, int, int, int, int, int]:
     cbct_keys = set(cbct_map.keys())
     planct_keys = set(planct_map.keys())
     ct_keys = set(ct_map.keys())
-    common = sorted(cbct_keys & planct_keys & ct_keys)
+    full_range = sorted(planct_keys & ct_keys)
 
-    cbct_only = len(cbct_keys - planct_keys - ct_keys)
-    planct_only = len(planct_keys - cbct_keys - ct_keys)
-    ct_only = len(ct_keys - cbct_keys - planct_keys)
+    with_cbct = len([key for key in full_range if key in cbct_keys])
+    missing_cbct = len(full_range) - with_cbct
+    cbct_out_of_range = len(cbct_keys - set(full_range))
+    planct_without_ct = len(planct_keys - ct_keys)
+    ct_without_planct = len(ct_keys - planct_keys)
 
     cbct_out = output_case_dir / cbct_name
     planct_out = output_case_dir / planct_name
     ct_out = output_case_dir / ct_name
 
     if not dry_run:
-        cbct_out.mkdir(parents=True, exist_ok=True)
-        planct_out.mkdir(parents=True, exist_ok=True)
-        ct_out.mkdir(parents=True, exist_ok=True)
+        for out_dir in (cbct_out, planct_out, ct_out):
+            if out_dir.exists():
+                shutil.rmtree(out_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
 
-    for idx, key in enumerate(common, start=1):
+    for idx, key in enumerate(full_range, start=1):
         out_name = f"{idx:04d}.dcm"
         if not dry_run:
-            shutil.copy2(cbct_map[key], cbct_out / out_name)
+            if key in cbct_map:
+                shutil.copy2(cbct_map[key], cbct_out / out_name)
             shutil.copy2(planct_map[key], planct_out / out_name)
             shutil.copy2(ct_map[key], ct_out / out_name)
 
-    return len(common), cbct_only, planct_only, ct_only
+    return len(full_range), with_cbct, missing_cbct, cbct_out_of_range, planct_without_ct, ct_without_planct
 
 
 def process_one_case(
@@ -108,7 +114,7 @@ def process_one_case(
     planct_map = build_map(read_series(planct_dir, args.key_mode), args.round_digits)
     ct_map = build_map(read_series(ct_dir, args.key_mode), args.round_digits)
 
-    triplets, cbct_only, planct_only, ct_only = copy_triplets(
+    full_range, with_cbct, missing_cbct, cbct_out_of_range, planct_without_ct, ct_without_planct = copy_full_range(
         cbct_map,
         planct_map,
         ct_map,
@@ -119,20 +125,22 @@ def process_one_case(
         dry_run=args.dry_run,
     )
 
-    print(f"[{case_name}] CBCT readable slices:   {len(cbct_map)}")
-    print(f"[{case_name}] PlanCT readable slices: {len(planct_map)}")
-    print(f"[{case_name}] CT readable slices:     {len(ct_map)}")
-    print(f"[{case_name}] Matched triplets:       {triplets}")
-    print(f"[{case_name}] CBCT-only slices:       {cbct_only}")
-    print(f"[{case_name}] PlanCT-only slices:     {planct_only}")
-    print(f"[{case_name}] CT-only slices:         {ct_only}")
+    print(f"[{case_name}] CBCT readable slices:       {len(cbct_map)}")
+    print(f"[{case_name}] PlanCT readable slices:     {len(planct_map)}")
+    print(f"[{case_name}] CT readable slices:         {len(ct_map)}")
+    print(f"[{case_name}] Full PlanCT/CT z-range:     {full_range}")
+    print(f"[{case_name}] Slices with CBCT:           {with_cbct}")
+    print(f"[{case_name}] Slices filled by PlanCT:    {missing_cbct}")
+    print(f"[{case_name}] CBCT outside PlanCT/CT:     {cbct_out_of_range}")
+    print(f"[{case_name}] PlanCT without target CT:   {planct_without_ct}")
+    print(f"[{case_name}] CT without PlanCT input:    {ct_without_planct}")
     if not args.dry_run:
         print(f"[{case_name}] Output case: {output_case_dir}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Prepare CBCT/PlanCT/CT DICOM triplets for CycleGAN CBCT-to-sCT training"
+        description="Prepare full-z-range CBCT/PlanCT/CT DICOM folders for CycleGAN CBCT-to-sCT training"
     )
     parser.add_argument("--cbct_dir", type=Path, help="Single-case input CBCT series directory")
     parser.add_argument("--planct_dir", type=Path, help="Single-case input PlanCT series directory")

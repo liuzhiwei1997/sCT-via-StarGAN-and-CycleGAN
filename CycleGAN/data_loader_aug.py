@@ -27,9 +27,10 @@ class PairedDICOMFolder(data.Dataset):
     * ``root/<itemA>/*.dcm`` and ``root/CT/*.dcm``
 
     When ``use_planct_completion`` is enabled, each case must also contain a
-    ``PlanCT`` folder with filenames matching ``itemA`` and ``CT``. The returned
-    input image is ``CBCT`` inside the detected FOV and ``PlanCT`` outside it.
-    Pairing is performed by filename within each case directory.
+    ``PlanCT`` folder with filenames matching ``CT``. ``CBCT`` is optional per
+    slice: slices with a matching CBCT file use CBCT inside the detected FOV and
+    PlanCT outside it, while PlanCT/CT slices without CBCT use PlanCT as the
+    complete input. Pairing is performed by filename within each case directory.
     """
 
     def __init__(
@@ -93,29 +94,40 @@ class PairedDICOMFolder(data.Dataset):
         pairs = []
 
         case_dirs = [path for path in self.root.iterdir() if path.is_dir()]
-        if (self.root / self.item_a).is_dir() and (self.root / "CT").is_dir():
+        has_flat_item = (self.root / self.item_a).is_dir()
+        has_flat_planct = (self.root / self.planct_name).is_dir()
+        has_flat_ct = (self.root / "CT").is_dir()
+        if has_flat_ct and (has_flat_item or (self.use_planct_completion and has_flat_planct)):
             case_dirs.append(self.root)
 
         for case_dir in sorted(set(case_dirs)):
             item_dir = case_dir / self.item_a
             ct_dir = case_dir / "CT"
             planct_dir = case_dir / self.planct_name
-            if not item_dir.is_dir() or not ct_dir.is_dir():
+            if not ct_dir.is_dir():
+                continue
+            if not self.use_planct_completion and not item_dir.is_dir():
+                continue
+            if self.use_planct_completion and not planct_dir.is_dir():
                 continue
             if self.use_planct_completion and not planct_dir.is_dir():
                 continue
 
-            item_files = {path.name: path for path in sorted(item_dir.glob("*.dcm"))}
+            item_files = {}
+            if item_dir.is_dir():
+                item_files = {path.name: path for path in sorted(item_dir.glob("*.dcm"))}
             ct_files = {path.name: path for path in sorted(ct_dir.glob("*.dcm"))}
-            common_names = item_files.keys() & ct_files.keys()
 
-            planct_files = {}
             if self.use_planct_completion:
                 planct_files = {path.name: path for path in sorted(planct_dir.glob("*.dcm"))}
-                common_names = common_names & planct_files.keys()
+                common_names = planct_files.keys() & ct_files.keys()
+                for name in sorted(common_names):
+                    pairs.append((item_files.get(name), ct_files[name], planct_files[name]))
+                continue
 
+            common_names = item_files.keys() & ct_files.keys()
             for name in sorted(common_names):
-                pairs.append((item_files[name], ct_files[name], planct_files.get(name)))
+                pairs.append((item_files[name], ct_files[name], None))
 
         return pairs
 
@@ -126,10 +138,13 @@ class PairedDICOMFolder(data.Dataset):
         return self._to_grayscale_image(pixels)
 
     def _load_completed_cbct_image(self, cbct_path, planct_path):
-        cbct_hu, cbct_raw = self._load_hu(cbct_path)
         planct_hu, _ = self._load_hu(planct_path)
-        cbct_norm = self._normalize_modality(cbct_hu, "CBCT")
         planct_norm = self._normalize_modality(planct_hu, "CT")
+        if cbct_path is None:
+            return self._to_grayscale_image(planct_norm)
+
+        cbct_hu, cbct_raw = self._load_hu(cbct_path)
+        cbct_norm = self._normalize_modality(cbct_hu, "CBCT")
         fov_mask = self._build_fov_mask(cbct_hu, cbct_raw)
         completed = np.where(fov_mask, cbct_norm, planct_norm)
         return self._to_grayscale_image(completed)
