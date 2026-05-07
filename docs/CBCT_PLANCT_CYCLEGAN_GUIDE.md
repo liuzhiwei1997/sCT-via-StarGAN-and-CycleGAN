@@ -158,9 +158,9 @@ Outputs are written under `runs/CycleCBCT_PlanCT/results` and reports under `run
 - Avoid using the exact target CT as PlanCT input for validation/test, or metrics can be artificially optimistic on PlanCT-only z-slices.
 - Choose `--fov_mask_mode nonzero` if missing CBCT pixels are zero-padded; choose `non_air` if missing regions are near air HU.
 
-## MRI + CBCT input with PlanCT supervision
+## MRI + CBCT input for sCT with PlanCT supervision
 
-If a registered MRI is available and you want to train `MRI + CBCT -> sCT` using `PlanCT` as the supervision target, prepare each case with same-named DICOM slices across `MRI/`, `CBCT/`, and `PlanCT/`:
+If a registered MRI is available and you want to train `MRI + CBCT -> sCT` using `PlanCT` only as the supervision target, prepare each case with same-named DICOM slices across `MRI/`, `CBCT/`, and `PlanCT/`:
 
 ```text
 data/MRI_CBCT_PlanCT_CycleGAN/
@@ -178,24 +178,24 @@ data/MRI_CBCT_PlanCT_CycleGAN/
     Case201/{MRI,CBCT,PlanCT}/
 ```
 
-Run training with two input channels and `PlanCT` as the target:
+Run training with two input channels; the model output is sCT and `PlanCT` is the target:
 
 ```bash
 python tools/cyclegan_cbct_planct.py train \
   --data_root ./data/MRI_CBCT_PlanCT_CycleGAN \
-  --runs_root ./runs/CycleMRI_CBCT_to_PlanCT \
+  --runs_root ./runs/CycleMRI_CBCT_sCT_PlanCTTarget \
   --input_modalities MRI,CBCT \
   --target_name PlanCT \
   --use_planct_completion false \
   --batch_size 4
 ```
 
-Run testing with the same channel/target configuration:
+Run testing/generation with the same channel/target configuration:
 
 ```bash
 python tools/cyclegan_cbct_planct.py test \
   --data_root ./data/MRI_CBCT_PlanCT_CycleGAN \
-  --runs_root ./runs/CycleMRI_CBCT_to_PlanCT \
+  --runs_root ./runs/CycleMRI_CBCT_sCT_PlanCTTarget \
   --input_modalities MRI,CBCT \
   --target_name PlanCT \
   --use_planct_completion false \
@@ -204,7 +204,7 @@ python tools/cyclegan_cbct_planct.py test \
 
 Notes:
 
-- This is a two-channel input: channel 1 is MRI, channel 2 is CBCT. The generator output remains one CT-like channel.
-- `PlanCT` is used as the training target in this setup, so it is not used for CBCT completion. Keep `--use_planct_completion false` to avoid leaking the target into the input.
+- This is a two-channel input: channel 1 is MRI, channel 2 is CBCT. The generator output is the one-channel sCT; PlanCT is only the target used to supervise that output.
+- `PlanCT` is used as the training target in this setup; it is not the generated product and is not used for CBCT completion. Keep `--use_planct_completion false` to avoid leaking the target into the input.
 - MRI, CBCT, and PlanCT must be registered and resampled to the same voxel grid before training.
 - If CBCT does not cover the full z-range but MRI and PlanCT do, either crop training to the common MRI/CBCT/PlanCT range or add a separate missing-CBCT handling strategy before using two-channel training.

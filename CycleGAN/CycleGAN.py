@@ -238,7 +238,7 @@ def get_gen_loss(real_A, real_B, gen_AB, gen_BA, disc_A, disc_B, adv_criterion, 
     gen_adversarial_loss = adv_loss_BA + adv_loss_AB
 
     # Identity Loss -- only valid when both domains have the same channel count.
-    # Multi-modal inputs such as MRI+CBCT -> PlanCT have different channel counts
+    # Multi-modal inputs such as MRI+CBCT -> sCT with PlanCT target have different channel counts
     # between domain A and B, so applying the opposite generator directly to a
     # real image from the wrong channel domain would be invalid.
     if real_A.size(1) == real_B.size(1):

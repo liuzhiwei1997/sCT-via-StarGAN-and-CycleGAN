@@ -16,7 +16,7 @@ python tools/cyclegan_cbct_planct.py train --data_root ./data/CBCT_CycleGAN --ru
 python tools/cyclegan_cbct_planct.py test --data_root ./data/CBCT_CycleGAN --runs_root ./runs/CycleCBCT_PlanCT --test_epochs 500
 ```
 
-See [`docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md`](docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md) for the complete data layout, registration requirements, train/test commands, and code overview. The guide also includes an `MRI,CBCT -> PlanCT` two-channel training example when registered MRI is available.
+See [`docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md`](docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md) for the complete data layout, registration requirements, train/test commands, and code overview. The guide also includes an `MRI,CBCT -> sCT` two-channel training example with `PlanCT` as target when registered MRI is available.
 
 ## Data layout expected by the training scripts
 

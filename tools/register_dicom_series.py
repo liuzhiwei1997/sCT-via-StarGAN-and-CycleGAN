@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Register and resample case DICOM series to a common reference grid.
 
-Typical use before MRI+CBCT->PlanCT training:
+Typical use before MRI+CBCT->sCT training with PlanCT as target:
 
     raw/Case001/{MRI,CBCT,PlanCT} -> registered/Case001/{MRI,CBCT,PlanCT}
 
