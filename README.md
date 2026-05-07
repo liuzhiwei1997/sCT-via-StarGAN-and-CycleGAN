@@ -5,6 +5,18 @@ This repository contains the code used in the paper **"Synthetic CT Generation f
 **Published in:** *Radiation Oncology*
 **DOI:** [10.1186/s13014-025-02590-2](https://doi.org/10.1186/s13014-025-02590-2)
 
+## Recommended quick start for CBCT + PlanCT
+
+For the limited-z-range CBCT use case, use the convenience wrapper and detailed guide:
+
+```bash
+python tools/cyclegan_cbct_planct.py prepare-all --raw_root ./raw_cbct_planct --data_root ./data/CBCT_CycleGAN
+python tools/cyclegan_cbct_planct.py train --data_root ./data/CBCT_CycleGAN --runs_root ./runs/CycleCBCT_PlanCT
+python tools/cyclegan_cbct_planct.py test --data_root ./data/CBCT_CycleGAN --runs_root ./runs/CycleCBCT_PlanCT --test_epochs 500
+```
+
+See [`docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md`](docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md) for the complete data layout, registration requirements, train/test commands, and code overview.
+
 ## Data layout expected by the training scripts
 
 All loaders in this repo read **DICOM (`.dcm`) files** and infer domains from folder names.
