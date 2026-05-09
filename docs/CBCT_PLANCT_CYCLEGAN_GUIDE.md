@@ -1,6 +1,6 @@
 # CBCT + PlanCT CycleGAN quick guide
 
-This guide is the recommended entry point for generating full-pelvis sCT from limited-z-range CBCT using PlanCT completion.
+This guide is the recommended entry point for generating full-pelvis sCT from limited-z-range CBCT using PlanCT completion. For copy-paste-only command blocks, see `docs/COPY_PASTE_COMMANDS.md`.
 
 ## What the code does
 
@@ -160,10 +160,10 @@ Outputs are written under `runs/CycleCBCT_PlanCT/results` and reports under `run
 
 ## MRI + CBCT input for sCT with PlanCT supervision
 
-If a registered MRI is available and you want to train `MRI + CBCT -> sCT` using `PlanCT` only as the supervision target, prepare each case with same-named DICOM slices across `MRI/`, `CBCT/`, and `PlanCT/`:
+If a registered MRI is available and you want to train `MRI + CBCT -> sCT` using `PlanCT` only as the supervision target, prepare each case with same-named DICOM slices across `MRI/`, `CBCT/`, and `PlanCT/`. If you use the wrapper registration command below, the registered output root already has the required split structure and can be used directly as `--data_root`:
 
 ```text
-data/MRI_CBCT_PlanCT_CycleGAN/
+registered_mri_cbct_planct/
   train/
     Case001/
       MRI/      # registered/resampled MRI channel
@@ -178,11 +178,24 @@ data/MRI_CBCT_PlanCT_CycleGAN/
     Case201/{MRI,CBCT,PlanCT}/
 ```
 
+Register raw MRI and CBCT to PlanCT first if needed:
+
+```bash
+python tools/cyclegan_cbct_planct.py register-all \
+  --raw_root ./raw_cbct_planct \
+  --registered_root ./registered_mri_cbct_planct \
+  --fixed_name PlanCT \
+  --moving_modalities MRI,CBCT \
+  --transform rigid
+```
+
+Do not run `prepare-all` for this variant unless you also have a separate `CT/` folder. The CBCT+PlanCT preparation script is designed for `{CBCT,PlanCT,CT}` cases, while this two-channel variant uses `{MRI,CBCT,PlanCT}` directly.
+
 Run training with two input channels; the model output is sCT and `PlanCT` is the target:
 
 ```bash
 python tools/cyclegan_cbct_planct.py train \
-  --data_root ./data/MRI_CBCT_PlanCT_CycleGAN \
+  --data_root ./registered_mri_cbct_planct \
   --runs_root ./runs/CycleMRI_CBCT_sCT_PlanCTTarget \
   --input_modalities MRI,CBCT \
   --target_name PlanCT \
@@ -194,7 +207,7 @@ Run testing/generation with the same channel/target configuration:
 
 ```bash
 python tools/cyclegan_cbct_planct.py test \
-  --data_root ./data/MRI_CBCT_PlanCT_CycleGAN \
+  --data_root ./registered_mri_cbct_planct \
   --runs_root ./runs/CycleMRI_CBCT_sCT_PlanCTTarget \
   --input_modalities MRI,CBCT \
   --target_name PlanCT \

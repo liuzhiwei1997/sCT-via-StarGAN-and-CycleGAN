@@ -10,13 +10,13 @@ This repository contains the code used in the paper **"Synthetic CT Generation f
 For the limited-z-range CBCT use case, use the convenience wrapper and detailed guide:
 
 ```bash
-python tools/cyclegan_cbct_planct.py register-all --raw_root ./raw_cbct_planct --registered_root ./registered_cbct_planct --fixed_name PlanCT --moving_modalities MRI,CBCT
-python tools/cyclegan_cbct_planct.py prepare-all --raw_root ./registered_cbct_planct --data_root ./data/CBCT_CycleGAN
+python tools/cyclegan_cbct_planct.py register-all --raw_root ./raw_cbct_planct --registered_root ./registered_cbct_planct_ct --fixed_name PlanCT --moving_modalities CBCT,CT
+python tools/cyclegan_cbct_planct.py prepare-all --raw_root ./registered_cbct_planct_ct --data_root ./data/CBCT_CycleGAN
 python tools/cyclegan_cbct_planct.py train --data_root ./data/CBCT_CycleGAN --runs_root ./runs/CycleCBCT_PlanCT
 python tools/cyclegan_cbct_planct.py test --data_root ./data/CBCT_CycleGAN --runs_root ./runs/CycleCBCT_PlanCT --test_epochs 500
 ```
 
-See [`docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md`](docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md) for the complete data layout, registration requirements, train/test commands, and code overview. The guide also includes an `MRI,CBCT -> sCT` two-channel training example with `PlanCT` as target when registered MRI is available.
+See [`docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md`](docs/CBCT_PLANCT_CYCLEGAN_GUIDE.md) for the complete data layout, registration requirements, train/test commands, and code overview. If you only need commands to copy directly, use [`docs/COPY_PASTE_COMMANDS.md`](docs/COPY_PASTE_COMMANDS.md). The guide also includes an `MRI,CBCT -> sCT` two-channel training example with `PlanCT` as target when registered MRI is available.
 
 ## Data layout expected by the training scripts
 
